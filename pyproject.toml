@@ -1,6 +1,29 @@
 [project]
-name = "placeholder"
+name = "svk-img-metadata"
 version = "0.1"
+description = "null"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "Henrik Vitalis "}]
+license = "Apache-2.0"
+classifiers = []
+dependencies = [
+
+]
 
 [dependency-groups]
-dev = ["pytest"]
+dev = [
+    "pytest"
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+
+[project.urls]
+Homepage = "https://github.com/vitlais/svk-img-metadata"
+Changelog = "https://github.com/vitlais/svk-img-metadata/releases"
+Issues = "https://github.com/vitlais/svk-img-metadata/issues"
+CI = "https://github.com/vitlais/svk-img-metadata/actions"
+
