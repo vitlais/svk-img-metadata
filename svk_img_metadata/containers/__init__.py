@@ -8,16 +8,18 @@ package sniffs the format and routes to the right one.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from ..codecs import exif as exif_codec
 from ..codecs import iptc as iptc_codec
 from ..codecs import xmp as xmp_codec
-from ..errors import UnsupportedFormatError
+from ..codecs.xmp import XmpDocument
+from ..errors import MetadataError, UnsupportedFormatError
 from ..model import ImageMetadata
 from . import jpeg
 from ._raw import RawMetadata
 
-__all__ = ["detect_format", "load", "SUPPORTED_FORMATS"]
+__all__ = ["detect_format", "load", "save_image", "SUPPORTED_FORMATS"]
 
 #: Formats with (eventual) read/write support. HEIC is deferred.
 SUPPORTED_FORMATS = ("jpeg", "tiff", "png")
@@ -68,6 +70,8 @@ def load(path: str | os.PathLike[str]) -> ImageMetadata:
     raw = _extract(fmt, data)
 
     meta = ImageMetadata(source_format=fmt)
+    meta._source = data
+    meta._source_path = path
     per_standard: dict[str, dict] = {"exif": {}, "iptc": {}, "xmp": {}}
     if raw.exif is not None:
         meta.exif, per_standard["exif"] = exif_codec.decode(raw.exif)
@@ -80,3 +84,31 @@ def load(path: str | os.PathLike[str]) -> ImageMetadata:
         for field_name, value in per_standard[standard].items():
             meta.set(field_name, value)
     return meta
+
+
+def save_image(meta: ImageMetadata, path, standards: tuple[str, ...]) -> None:
+    """Rewrite ``meta`` back into its source container (see ImageMetadata.save)."""
+    if meta._source is None:
+        raise MetadataError("save() requires metadata read from a source image")
+    if meta.source_format != "jpeg":
+        # TIFF and PNG writing land in M3.
+        raise NotImplementedError(
+            f"writing {meta.source_format!r} is not implemented yet"
+        )
+
+    canonical = meta.to_dict()
+    kwargs: dict[str, Any] = {}
+    if "exif" in standards:
+        kwargs["exif"] = exif_codec.encode(canonical, meta.exif or None)
+    if "iptc" in standards:
+        kwargs["iptc"] = iptc_codec.encode(canonical, meta.iptc or None)
+    if "xmp" in standards:
+        base_doc = meta.xmp if isinstance(meta.xmp, XmpDocument) else None
+        kwargs["xmp"] = xmp_codec.encode(canonical, base_doc)
+
+    new_bytes = jpeg.rewrite(meta._source, **kwargs)
+    target = path if path is not None else meta._source_path
+    if target is None:
+        raise MetadataError("no destination path for save()")
+    with open(target, "wb") as fh:
+        fh.write(new_bytes)

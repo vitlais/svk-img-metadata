@@ -1,4 +1,4 @@
-"""IPTC-IIM decoding: the binary datastream -> canonical model values."""
+"""IPTC-IIM encoding/decoding: the binary datastream <-> canonical values."""
 
 from __future__ import annotations
 
@@ -12,6 +12,10 @@ from ..model import LangAlt, MetaDate
 from ._common import decode_text
 
 _TAG_MARKER = 0x1C
+# Record 1 dataset 90 = coded character set; ESC % G declares UTF-8.
+_CHARSET_KEY = (1, 90)
+_CHARSET_UTF8 = b"\x1b%G"
+_MAX_STANDARD_LEN = 0x7FFF
 
 
 def decode(iim: bytes) -> tuple[dict[tuple[int, int], list[bytes]], dict[str, Any]]:
@@ -102,3 +106,72 @@ def _decode_date(
     except ValueError:
         return None
     return MetaDate(dt, has_time=has_time)
+
+
+# --------------------------------------------------------------------------
+# encoding (canonical -> IIM datastream)
+# --------------------------------------------------------------------------
+def encode(
+    canonical: dict[str, Any], base: dict[tuple[int, int], list[bytes]] | None = None
+) -> bytes:
+    """Encode canonical values into an IPTC-IIM datastream (UTF-8)."""
+    datasets: dict[tuple[int, int], list[bytes]] = {
+        key: list(values) for key, values in (base or {}).items()
+    }
+    datasets[_CHARSET_KEY] = [_CHARSET_UTF8]
+
+    for spec in FIELDS.values():
+        if not spec.iptc:
+            continue
+        value = canonical.get(spec.name)
+        if spec.kind is ValueKind.DATE:
+            for key in spec.iptc:
+                datasets.pop(key, None)
+            if value is not None:
+                date_bytes, time_bytes = _encode_date(value)
+                datasets[spec.iptc[0]] = [date_bytes]
+                if len(spec.iptc) > 1 and time_bytes is not None:
+                    datasets[spec.iptc[1]] = [time_bytes]
+            continue
+        key = spec.iptc[0]
+        datasets.pop(key, None)
+        if value is None:
+            continue
+        if spec.kind in (ValueKind.TEXT_BAG, ValueKind.TEXT_SEQ):
+            datasets[key] = [_encode_text(v) for v in value]
+        else:
+            datasets[key] = [_encode_text(str(value))]
+    return _build(datasets)
+
+
+def _encode_text(value: Any) -> bytes:
+    return str(value).encode("utf-8")
+
+
+def _encode_date(value: MetaDate | Any) -> tuple[bytes, bytes | None]:
+    dt = value.value if isinstance(value, MetaDate) else value
+    date_bytes = dt.strftime("%Y%m%d").encode("ascii")
+    if isinstance(value, MetaDate) and not value.has_time:
+        return date_bytes, None
+    time_str = dt.strftime("%H%M%S")
+    offset = dt.utcoffset()
+    if offset is not None:
+        total = int(offset.total_seconds())
+        sign = "+" if total >= 0 else "-"
+        total = abs(total)
+        time_str += f"{sign}{total // 3600:02d}{(total % 3600) // 60:02d}"
+    return date_bytes, time_str.encode("ascii")
+
+
+def _build(datasets: dict[tuple[int, int], list[bytes]]) -> bytes:
+    out = bytearray()
+    for record, dataset in sorted(datasets):
+        for value in datasets[(record, dataset)]:
+            if len(value) > _MAX_STANDARD_LEN:
+                raise MalformedImageError("IPTC value too long to encode")
+            out += (
+                bytes([_TAG_MARKER, record, dataset])
+                + struct.pack(">H", len(value))
+                + value
+            )
+    return bytes(out)
