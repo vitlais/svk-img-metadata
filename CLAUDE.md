@@ -23,7 +23,17 @@ CI installs with plain pip instead (`pip install . --group dev`) and runs `pytho
 
 - **Layout**: a single flat package `svk_img_metadata/` with tests in `tests/`. Public API is re-exported from `svk_img_metadata/__init__.py` and imported in tests as `from svk_img_metadata import ...`.
 - **Python support**: `requires-python = ">=3.10"`, and CI runs the matrix **3.10 → 3.14**. Don't use syntax/stdlib features newer than 3.10.
-- **No linter or type checker is configured** yet — if you add `ruff`/`mypy`, add it to the `dev` dependency group in `pyproject.toml` and to CI.
+- **Ruff** is the linter/formatter (dev dependency, `[tool.ruff]` in `pyproject.toml`, `target-version = "py310"`). A `PostToolUse` hook auto-runs `ruff format` + `ruff check --fix` on edited `.py` files. No type checker is configured yet — if you add `mypy`/`ty`, add it to the `dev` group and to CI.
+
+## Security
+
+This library parses **untrusted image files** — treat every input byte as attacker-controlled. The rules below are hard requirements, not suggestions.
+
+- **XMP is RDF/XML — never parse it with an unsafe XML parser.** XMP packets must be parsed with **`defusedxml`** (or an `lxml`/stdlib parser with DTD processing and external-entity resolution explicitly disabled and entity-expansion bounded). Parsing XMP with stdlib `xml.etree`/`xml.dom` or a default-configured `lxml` is an XXE (data exfiltration / SSRF) and billion-laughs (DoS) vulnerability. Enforce this the moment any `import xml` / `lxml` / XMP-handling code appears.
+- **Guard against resource exhaustion**: keep Pillow's decompression-bomb limit (`Image.MAX_IMAGE_PIXELS`) enabled; validate every EXIF/IPTC length/count field against the actual remaining bytes before allocating or looping; cap TIFF IFD-chain / nested-structure traversal depth.
+- **Malformed input must raise a clean library exception** — never an unhandled `struct.error`/`IndexError`/`MemoryError`/`RecursionError`, and never silent trust of a bad offset or length.
+- **Pin and vet parsing dependencies** (Pillow, piexif, pyexiv2, exifread…): pyexiv2 wraps native exiv2 and Pillow bundles native codecs — both carry memory-safety CVEs, so check CVEs at add-time and before each release.
+- A read-only `security-reviewer` subagent (`.claude/agents/security-reviewer.md`) audits for these; run it when adding parsing code or a parsing dependency, and before releases.
 
 ## Release flow
 
