@@ -1,5 +1,17 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | { read -r f; case \"$f\" in */.github/workflows/*|.github/workflows/*) jq -n '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"ask\",permissionDecisionReason:\"Editing a CI/publish workflow. publish.yml is intentionally disabled pending PyPI trusted-publishing setup — confirm before changing.\"}}';; esac; }",
+            "statusMessage": "Checking workflow guard"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit",
