@@ -8,7 +8,9 @@ authors = [{name = "Henrik Vitalis "}]
 license = "Apache-2.0"
 classifiers = []
 dependencies = [
-
+    "defusedxml>=0.7.1",
+    "piexif>=1.1.3",
+    "pillow>=12.3.0",
 ]
 
 [dependency-groups]
