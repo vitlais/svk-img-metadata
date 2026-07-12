@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 
-from .containers import SUPPORTED_FORMATS, detect_format
+from .containers import SUPPORTED_FORMATS, detect_format, load as _load
 from .errors import (
     MalformedImageError,
     MetadataError,
@@ -36,9 +36,6 @@ __all__ = [
     "ValidationError",
 ]
 
-# Read at least enough bytes to identify any supported container's signature.
-_HEADER_BYTES = 12
-
 
 def read(path: str | os.PathLike[str]) -> ImageMetadata:
     """Read the metadata of the image at ``path`` into an :class:`ImageMetadata`.
@@ -47,8 +44,4 @@ def read(path: str | os.PathLike[str]) -> ImageMetadata:
     this library does not handle, and
     :class:`~svk_img_metadata.errors.MalformedImageError` for corrupt input.
     """
-    with open(path, "rb") as fh:
-        header = fh.read(_HEADER_BYTES)
-    fmt = detect_format(header)
-    # Per-format decoding is added incrementally (M1: JPEG, M3: TIFF/PNG).
-    raise NotImplementedError(f"reading {fmt!r} metadata is not implemented yet")
+    return _load(path)
