@@ -16,7 +16,7 @@ from ..codecs import xmp as xmp_codec
 from ..codecs.xmp import XmpDocument
 from ..errors import MetadataError, UnsupportedFormatError
 from ..model import ImageMetadata
-from . import jpeg
+from . import jpeg, png, tiff
 from ._raw import RawMetadata
 
 __all__ = ["detect_format", "load", "save_image", "SUPPORTED_FORMATS"]
@@ -53,7 +53,10 @@ def detect_format(header: bytes) -> str:
 def _extract(fmt: str, data: bytes) -> RawMetadata:
     if fmt == "jpeg":
         return jpeg.extract(data)
-    # TIFF and PNG extraction land in M3.
+    if fmt == "png":
+        return png.extract(data)
+    if fmt == "tiff":
+        return tiff.extract(data)
     raise NotImplementedError(f"reading {fmt!r} metadata is not implemented yet")
 
 
@@ -90,25 +93,62 @@ def save_image(meta: ImageMetadata, path, standards: tuple[str, ...]) -> None:
     """Rewrite ``meta`` back into its source container (see ImageMetadata.save)."""
     if meta._source is None:
         raise MetadataError("save() requires metadata read from a source image")
-    if meta.source_format != "jpeg":
-        # TIFF and PNG writing land in M3.
-        raise NotImplementedError(
-            f"writing {meta.source_format!r} is not implemented yet"
-        )
 
     canonical = meta.to_dict()
-    kwargs: dict[str, Any] = {}
-    if "exif" in standards:
-        kwargs["exif"] = exif_codec.encode(canonical, meta.exif or None)
-    if "iptc" in standards:
-        kwargs["iptc"] = iptc_codec.encode(canonical, meta.iptc or None)
+    exif_blob = (
+        exif_codec.encode(canonical, meta.exif or None) if "exif" in standards else None
+    )
+    iptc_blob = (
+        iptc_codec.encode(canonical, meta.iptc or None) if "iptc" in standards else None
+    )
+    xmp_blob = None
     if "xmp" in standards:
         base_doc = meta.xmp if isinstance(meta.xmp, XmpDocument) else None
-        kwargs["xmp"] = xmp_codec.encode(canonical, base_doc)
+        xmp_blob = xmp_codec.encode(canonical, base_doc)
 
-    new_bytes = jpeg.rewrite(meta._source, **kwargs)
+    fmt = meta.source_format
+    if fmt == "jpeg":
+        new_bytes = jpeg.rewrite(
+            meta._source,
+            **_managed(
+                exif=exif_blob, iptc=iptc_blob, xmp=xmp_blob, standards=standards
+            ),
+        )
+    elif fmt == "png":
+        # PNG has no standard IPTC slot; the eXIf chunk omits the Exif\0\0 prefix.
+        png_kwargs: dict[str, Any] = {}
+        if "exif" in standards:
+            png_kwargs["exif"] = _strip_exif_prefix(exif_blob)
+        if "xmp" in standards:
+            png_kwargs["xmp"] = xmp_blob
+        new_bytes = png.rewrite(meta._source, **png_kwargs)
+    elif fmt == "tiff":
+        raise NotImplementedError(
+            "TIFF writing is a later milestone (read is supported)"
+        )
+    else:
+        raise NotImplementedError(f"writing {fmt!r} is not implemented yet")
+
     target = path if path is not None else meta._source_path
     if target is None:
         raise MetadataError("no destination path for save()")
     with open(target, "wb") as fh:
         fh.write(new_bytes)
+
+
+def _managed(*, exif, iptc, xmp, standards) -> dict[str, Any]:
+    """Only pass a standard to the writer if it was selected for writing."""
+    out: dict[str, Any] = {}
+    if "exif" in standards:
+        out["exif"] = exif
+    if "iptc" in standards:
+        out["iptc"] = iptc
+    if "xmp" in standards:
+        out["xmp"] = xmp
+    return out
+
+
+def _strip_exif_prefix(blob: bytes | None) -> bytes | None:
+    if blob and blob.startswith(b"Exif\x00\x00"):
+        return blob[6:]
+    return blob
