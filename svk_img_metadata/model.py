@@ -152,6 +152,24 @@ class ImageMetadata:
 
         save_image(self, path, standards)
 
+    def sync(
+        self,
+        source: str,
+        targets: tuple[str, ...] | list[str] | None = None,
+        fields: tuple[str, ...] | list[str] | None = None,
+        overwrite: bool = False,
+    ) -> list[str]:
+        """Copy the ``source`` standard's values into fields the targets carry.
+
+        E.g. ``meta.sync("exif", ["iptc", "xmp"])`` populates the IPTC/XMP
+        fields from EXIF. Updates the canonical model in place (a later
+        :meth:`save` writes them out); returns the field names changed. See
+        :mod:`svk_img_metadata.sync`.
+        """
+        from .sync import sync as _sync
+
+        return _sync(self, source, targets, fields, overwrite)
+
 
 def _make_property(name: str) -> property:
     def getter(self: ImageMetadata) -> Any:

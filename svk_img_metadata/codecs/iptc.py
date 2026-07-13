@@ -21,6 +21,13 @@ _MAX_STANDARD_LEN = 0x7FFF
 def decode(iim: bytes) -> tuple[dict[tuple[int, int], list[bytes]], dict[str, Any]]:
     """Decode an IPTC-IIM datastream into (raw datasets, canonical values)."""
     datasets = _parse(iim)
+    return datasets, canonical_from_datasets(datasets)
+
+
+def canonical_from_datasets(
+    datasets: dict[tuple[int, int], list[bytes]],
+) -> dict[str, Any]:
+    """Map raw IIM datasets to canonical field values."""
     canonical: dict[str, Any] = {}
     for spec in FIELDS.values():
         if not spec.iptc:
@@ -41,7 +48,7 @@ def decode(iim: bytes) -> tuple[dict[tuple[int, int], list[bytes]], dict[str, An
             canonical[spec.name] = LangAlt(decode_text(values[0]))
         else:
             canonical[spec.name] = decode_text(values[0])
-    return datasets, canonical
+    return canonical
 
 
 def _parse(data: bytes) -> dict[tuple[int, int], list[bytes]]:
