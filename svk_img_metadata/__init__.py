@@ -18,6 +18,7 @@ from .errors import (
 )
 from .fields import FIELDS, NAMESPACES, Standard, ValueKind
 from .model import GPSCoord, ImageMetadata, LangAlt, MetaDate
+from .validate import RequiredFields, ValidationResult
 
 __all__ = [
     "read",
@@ -27,6 +28,8 @@ __all__ = [
     "LangAlt",
     "MetaDate",
     "GPSCoord",
+    "RequiredFields",
+    "ValidationResult",
     "FIELDS",
     "NAMESPACES",
     "Standard",

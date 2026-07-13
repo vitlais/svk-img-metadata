@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 _STANDARDS = ("exif", "iptc", "xmp")
 
 
-def _standard_values(meta: ImageMetadata, standard: str) -> dict:
+def standard_values(meta: ImageMetadata, standard: str) -> dict:
     """The canonical values a single standard currently holds in ``meta``."""
     if standard == "exif":
         return exif_codec.canonical_from_raw(meta.exif) if meta.exif else {}
@@ -62,7 +62,7 @@ def sync(
     target_standards = [Standard(s) for s in target_set]
 
     field_filter = set(fields) if fields is not None else None
-    source_values = _standard_values(meta, source)
+    source_values = standard_values(meta, source)
 
     updated: list[str] = []
     for name, value in source_values.items():
