@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 
+from .codecs.xmp import decode as _decode_xmp, register_namespace
 from .containers import SUPPORTED_FORMATS, detect_format, load as _load
 from .errors import (
     MalformedImageError,
@@ -20,6 +21,8 @@ from .model import GPSCoord, ImageMetadata, LangAlt, MetaDate
 
 __all__ = [
     "read",
+    "read_sidecar",
+    "register_namespace",
     "ImageMetadata",
     "LangAlt",
     "MetaDate",
@@ -45,3 +48,19 @@ def read(path: str | os.PathLike[str]) -> ImageMetadata:
     :class:`~svk_img_metadata.errors.MalformedImageError` for corrupt input.
     """
     return _load(path)
+
+
+def read_sidecar(path: str | os.PathLike[str]) -> ImageMetadata:
+    """Read a standalone ``.xmp`` sidecar file into an :class:`ImageMetadata`.
+
+    The result has no source image (``source_format`` is ``None``) and cannot be
+    saved back into an image; use it to inspect canonical fields and ``.xmp``.
+    """
+    with open(path, "rb") as fh:
+        data = fh.read()
+    doc, canonical = _decode_xmp(data)
+    meta = ImageMetadata(source_format=None)
+    meta.xmp = doc
+    for name, value in canonical.items():
+        meta.set(name, value)
+    return meta

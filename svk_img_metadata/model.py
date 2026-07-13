@@ -13,8 +13,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
+from .errors import MetadataError
 from .fields import FIELDS
 
 __all__ = ["ImageMetadata", "LangAlt", "MetaDate", "GPSCoord"]
@@ -169,6 +171,39 @@ class ImageMetadata:
         from .sync import sync as _sync
 
         return _sync(self, source, targets, fields, overwrite)
+
+    def to_xmp(self) -> str:
+        """Serialise the current metadata as a standalone XMP packet string.
+
+        Reflects canonical edits and preserves any unknown/custom XMP
+        properties from the source.
+        """
+        from .codecs import xmp as xmp_codec
+        from .codecs.xmp import XmpDocument
+
+        base = self.xmp if isinstance(self.xmp, XmpDocument) else None
+        return xmp_codec.encode(self.to_dict(), base).decode("utf-8")
+
+    def write_xmp_sidecar(self, image_path=None, naming: str = "basename") -> Path:
+        """Write an XMP sidecar file and return its path.
+
+        ``naming``: ``"basename"`` → ``IMG.xmp`` (replace extension);
+        ``"fullname"`` → ``IMG.jpg.xmp`` (append). If ``image_path`` is an
+        explicit ``.xmp`` path it is used verbatim; otherwise it defaults to the
+        source image's path.
+        """
+        base = image_path if image_path is not None else self._source_path
+        if base is None:
+            raise MetadataError("no path for sidecar; pass image_path")
+        p = Path(base)
+        if p.suffix.lower() == ".xmp":
+            sidecar = p
+        elif naming == "fullname":
+            sidecar = p.with_name(p.name + ".xmp")
+        else:
+            sidecar = p.with_suffix(".xmp")
+        sidecar.write_text(self.to_xmp(), encoding="utf-8")
+        return sidecar
 
 
 def _make_property(name: str) -> property:

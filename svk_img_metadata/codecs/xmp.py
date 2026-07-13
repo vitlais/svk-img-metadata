@@ -17,7 +17,7 @@ from xml.etree import ElementTree as ET
 
 from defusedxml import ElementTree as DefusedET
 
-from ..errors import MalformedImageError
+from ..errors import MalformedImageError, MetadataError
 from ..fields import FIELDS, NAMESPACES, ValueKind
 
 RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
@@ -25,6 +25,10 @@ XML_NS = "http://www.w3.org/XML/1998/namespace"
 X_NS = "adobe:ns:meta/"
 
 _XPACKET_RE = re.compile(rb"<\?xpacket[^>]*\?>")
+
+# User-registered custom namespaces (prefix -> uri). Populated only via the
+# explicit, trusted register_namespace() API — never from untrusted packets.
+_CUSTOM_NS: dict[str, str] = {}
 
 # Keep our own (trusted, static) prefixes stable on serialisation. Namespaces we
 # do not model are round-tripped by ElementTree as ns0/ns1/… — their URIs and
@@ -35,6 +39,31 @@ ET.register_namespace("rdf", RDF_NS)
 ET.register_namespace("x", X_NS)
 for _prefix, _uri in NAMESPACES.items():
     ET.register_namespace(_prefix, _uri)
+
+
+def register_namespace(uri: str, prefix: str) -> None:
+    """Register a custom XMP namespace so ``prefix:local`` names resolve and
+    serialise with a stable prefix. Trusted, caller-driven only."""
+    _CUSTOM_NS[prefix] = uri
+    ET.register_namespace(prefix, uri)
+
+
+def _resolve(name: str) -> tuple[str, str]:
+    """Resolve ``'{uri}local'`` or ``'prefix:local'`` to ``(uri, local)``."""
+    if name.startswith("{") and "}" in name:
+        uri, local = name[1:].split("}", 1)
+        return uri, local
+    if ":" in name:
+        prefix, local = name.split(":", 1)
+        uri = NAMESPACES.get(prefix) or _CUSTOM_NS.get(prefix)
+        if uri is None:
+            raise MetadataError(
+                f"unknown XMP namespace prefix {prefix!r}; register_namespace() first"
+            )
+        return uri, local
+    raise MetadataError(
+        f"XMP name must be 'prefix:local' or '{{uri}}local', got {name!r}"
+    )
 
 
 def _q(uri: str, local: str) -> str:
@@ -108,6 +137,35 @@ class XmpDocument:
         desc = self._primary_description()
         element = ET.SubElement(desc, qname)
         _serialise_value(element, spec.kind, value)
+
+    # -- arbitrary / custom properties -------------------------------------
+    def get(self, name: str) -> str | None:
+        """Get a simple text property by ``'prefix:local'`` or ``'{uri}local'``."""
+        uri, local = _resolve(name)
+        qname = _q(uri, local)
+        for desc in self._descriptions():
+            if qname in desc.attrib:
+                return desc.attrib[qname]
+            element = desc.find(qname)
+            if element is not None:
+                return (element.text or "").strip()
+        return None
+
+    def set(self, name: str, value: Any) -> None:
+        """Set (or remove, if ``value`` is None) a simple text property.
+
+        Works for custom namespaces registered via ``register_namespace``.
+        """
+        uri, local = _resolve(name)
+        qname = _q(uri, local)
+        for desc in self._descriptions():
+            for existing in desc.findall(qname):
+                desc.remove(existing)
+            desc.attrib.pop(qname, None)
+        if value is None:
+            return
+        element = ET.SubElement(self._primary_description(), qname)
+        element.text = str(value)
 
     def to_bytes(self) -> bytes:
         body = ET.tostring(self._root, encoding="utf-8")
