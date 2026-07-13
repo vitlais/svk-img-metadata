@@ -1,4 +1,4 @@
-"""M3: TIFF read (EXIF via piexif, XMP tag 700, IPTC tag 33723). Write deferred."""
+"""TIFF: read (EXIF via piexif, XMP tag 700, IPTC tag 33723); write via sidecar."""
 
 import io
 import struct
@@ -7,7 +7,8 @@ import pytest
 from PIL import Image, TiffImagePlugin
 
 import svk_img_metadata as svk
-from svk_img_metadata.errors import MalformedImageError
+from svk_img_metadata.errors import MalformedImageError, MetadataError
+from svk_img_metadata.model import LangAlt
 
 _XMP = (
     '<?xpacket begin=""?><x:xmpmeta xmlns:x="adobe:ns:meta/">'
@@ -50,11 +51,25 @@ def test_tiff_without_extra_tags(tmp_path):
     assert m.description is None
 
 
-def test_tiff_write_not_yet_supported(tmp_path):
+def test_tiff_embedded_write_rejected(tmp_path):
     m = svk.read(_tiff(tmp_path))
     m.rating = 3
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(MetadataError):
         m.save(tmp_path / "out.tiff")
+
+
+def test_tiff_write_via_sidecar(tmp_path):
+    src = _tiff(tmp_path)
+    m = svk.read(src)
+    m.description = LangAlt("TIFF caption")
+    m.keywords = ["a", "b"]
+    sidecar = m.write_xmp_sidecar()
+    assert sidecar.name == "img.xmp"
+    # Original TIFF is untouched; metadata round-trips via the sidecar.
+    assert Image.open(src).size == (5, 5)
+    back = svk.read_sidecar(sidecar)
+    assert str(back.description) == "TIFF caption"
+    assert back.keywords == ["a", "b"]
 
 
 def test_malformed_tiff(tmp_path):

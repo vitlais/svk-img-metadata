@@ -120,10 +120,12 @@ meta.save("clean.jpg")
 
 | Format | Read | Write |
 |--------|------|-------|
-| JPEG   | ✅   | ✅    |
-| PNG    | ✅   | ✅ (EXIF + XMP; PNG has no standard IPTC slot) |
-| TIFF   | ✅   | not yet |
+| JPEG   | ✅   | ✅ embedded |
+| PNG    | ✅   | ✅ embedded (EXIF + XMP; PNG has no standard IPTC slot) |
+| TIFF   | ✅   | ✅ via XMP sidecar (`write_xmp_sidecar`); embedding not supported |
 | HEIC   | —    | —     |
+
+For TIFF, `save()` raises rather than embedding — use `meta.write_xmp_sidecar()` to write a `.xmp` alongside the file (the standard sidecar workflow).
 
 Malformed or hostile input always raises a clean `svk_img_metadata.MetadataError` (never an unhandled crash); XMP is parsed with `defusedxml` to block XXE and entity-expansion attacks.
 
