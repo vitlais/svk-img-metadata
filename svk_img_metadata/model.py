@@ -205,6 +205,55 @@ class ImageMetadata:
         sidecar.write_text(self.to_xmp(), encoding="utf-8")
         return sidecar
 
+    def validate(self, schema, strict: bool = False):
+        """Validate against a :class:`~svk_img_metadata.validate.RequiredFields`
+        schema; returns a ``ValidationResult`` (or raises if ``strict``)."""
+        from .validate import validate as _validate
+
+        return _validate(self, schema, strict)
+
+    def strip(self, fields: list[str] | None = None) -> list[str]:
+        """Remove modelled metadata (privacy). ``fields=None`` clears every
+        canonical field; otherwise clears the named ones. A later :meth:`save`
+        removes them from each standard. Returns the field names cleared.
+
+        Unmodelled tags (e.g. camera make/model, unknown XMP properties) are
+        preserved — this strips the descriptive/rights/location fields.
+        """
+        targets = list(FIELDS) if fields is None else fields
+        cleared = []
+        for name in targets:
+            if name not in FIELDS:
+                raise MetadataError(f"unknown canonical field: {name!r}")
+            if name in self._values:
+                self.set(name, None)
+                cleared.append(name)
+        return cleared
+
+    def diff_standards(
+        self, fields: list[str] | None = None
+    ) -> dict[str, dict[str, Any]]:
+        """Report fields whose value differs across the standards that carry it.
+
+        Returns ``{field: {standard: value}}`` for each shared field where the
+        standards that hold it disagree — the "what needs syncing" view.
+        """
+        from .sync import standard_values
+
+        per_standard = {s: standard_values(self, s) for s in ("exif", "iptc", "xmp")}
+        names = fields if fields is not None else list(FIELDS)
+        report: dict[str, dict[str, Any]] = {}
+        for name in names:
+            present = {
+                s: vals[name] for s, vals in per_standard.items() if name in vals
+            }
+            if len(present) < 2:
+                continue
+            first = next(iter(present.values()))
+            if not all(value == first for value in present.values()):
+                report[name] = present
+        return report
+
 
 def _make_property(name: str) -> property:
     def getter(self: ImageMetadata) -> Any:
