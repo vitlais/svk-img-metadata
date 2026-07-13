@@ -82,6 +82,9 @@ def load(path: str | os.PathLike[str]) -> ImageMetadata:
         meta.iptc, per_standard["iptc"] = iptc_codec.decode(raw.iptc)
     if raw.xmp is not None:
         meta.xmp, per_standard["xmp"] = xmp_codec.decode(raw.xmp)
+    else:
+        # Always expose an editable XMP document (for custom namespaces/export).
+        meta.xmp = XmpDocument.empty()
 
     for standard in _MERGE_ORDER:
         for field_name, value in per_standard[standard].items():
