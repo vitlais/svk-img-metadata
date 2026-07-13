@@ -43,4 +43,4 @@ Publishing is fully automated and **tag/release-driven** — do not publish manu
 
 - `.github/workflows/test.yml` runs the pytest matrix on every push and PR.
 - `.github/workflows/publish.yml` triggers on a GitHub **release (`created`)**: it re-runs the test matrix, builds, then publishes to PyPI via **trusted publishing** (OIDC, `environment: release`). Cutting a GitHub release is what ships a version, so bump `version` in `pyproject.toml` before tagging.
-- **The publish workflow is currently disabled** — PyPI trusted-publishing permissions for this repo haven't been set up yet. Releases will not reach PyPI until the OIDC publisher is configured on PyPI and the workflow is re-enabled.
+- Publishing is **live**: the PyPI trusted publisher and the `release` environment (with protection rules) are configured, and the workflow is enabled. The `release` environment may gate the publish job on manual approval.
