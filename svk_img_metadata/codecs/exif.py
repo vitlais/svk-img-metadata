@@ -31,7 +31,11 @@ def decode(blob: bytes) -> tuple[dict[str, Any], dict[str, Any]]:
         raw = piexif.load(bytes(blob))
     except Exception as exc:  # piexif raises bare ValueError/struct.error/etc.
         raise MalformedImageError(f"invalid EXIF data: {exc}") from exc
+    return raw, canonical_from_raw(raw)
 
+
+def canonical_from_raw(raw: dict[str, Any]) -> dict[str, Any]:
+    """Map a raw piexif IFD dict to canonical field values."""
     canonical: dict[str, Any] = {}
     for spec in FIELDS.values():
         if spec.name == "gps":
@@ -48,7 +52,7 @@ def decode(blob: bytes) -> tuple[dict[str, Any], dict[str, Any]]:
         converted = _convert(spec.kind, value)
         if converted is not None:
             canonical[spec.name] = converted
-    return raw, canonical
+    return canonical
 
 
 def _convert(kind: ValueKind, value: Any) -> Any:

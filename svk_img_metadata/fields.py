@@ -202,14 +202,15 @@ FIELDS: dict[str, FieldSpec] = {
 }
 
 
+def has_slot(spec: FieldSpec, standard: Standard) -> bool:
+    """Whether ``spec`` has a physical location in ``standard``."""
+    if standard is Standard.EXIF:
+        return spec.exif is not None or spec.composite
+    if standard is Standard.IPTC:
+        return bool(spec.iptc)
+    return spec.xmp is not None
+
+
 def fields_for(standard: Standard) -> list[FieldSpec]:
     """Return the field specs that have a physical slot in ``standard``."""
-    result = []
-    for spec in FIELDS.values():
-        if standard is Standard.EXIF and (spec.exif is not None or spec.composite):
-            result.append(spec)
-        elif standard is Standard.IPTC and spec.iptc:
-            result.append(spec)
-        elif standard is Standard.XMP and spec.xmp is not None:
-            result.append(spec)
-    return result
+    return [spec for spec in FIELDS.values() if has_slot(spec, standard)]
