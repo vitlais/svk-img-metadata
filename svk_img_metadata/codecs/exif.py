@@ -1,7 +1,8 @@
-"""EXIF decoding: piexif IFD dicts -> canonical model values."""
+"""EXIF encoding/decoding: piexif IFD dicts <-> canonical model values."""
 
 from __future__ import annotations
 
+import copy
 from datetime import datetime
 from typing import Any
 
@@ -11,6 +12,8 @@ from ..errors import MalformedImageError
 from ..fields import FIELDS, ValueKind
 from ..model import GPSCoord, LangAlt, MetaDate
 from ._common import decode_text
+
+_PIEXIF_IFDS = ("0th", "Exif", "GPS", "Interop", "1st")
 
 # GPS IFD tag ids (piexif.GPSIFD).
 _GPS_LAT_REF, _GPS_LAT = 1, 2
@@ -110,3 +113,72 @@ def _decode_altitude(gps: dict[int, Any]) -> float | None:
     if gps.get(_GPS_ALT_REF) == 1:  # 1 = below sea level
         value = -value
     return value
+
+
+# --------------------------------------------------------------------------
+# encoding (canonical -> EXIF blob)
+# --------------------------------------------------------------------------
+def encode(canonical: dict[str, Any], base: dict[str, Any] | None = None) -> bytes:
+    """Encode canonical values into an EXIF blob, preserving unmodelled tags.
+
+    ``base`` is the raw piexif dict from a previous read; its unknown tags are
+    kept. Mapped fields are made to reflect ``canonical`` exactly.
+    """
+    raw: dict[str, Any] = copy.deepcopy(base) if base else {}
+    for ifd in _PIEXIF_IFDS:
+        raw.setdefault(ifd, {})
+    raw.setdefault("thumbnail", None)
+
+    for spec in FIELDS.values():
+        if spec.name == "gps":
+            _encode_gps(raw["GPS"], canonical.get("gps"))
+            continue
+        if spec.exif is None:
+            continue
+        ifd, tag = spec.exif
+        value = canonical.get(spec.name)
+        if value is None:
+            raw[ifd].pop(tag, None)
+        else:
+            raw[ifd][tag] = _encode_value(spec.kind, value)
+    try:
+        return piexif.dump(raw)
+    except Exception as exc:
+        raise MalformedImageError(f"could not encode EXIF: {exc}") from exc
+
+
+def _encode_value(kind: ValueKind, value: Any) -> bytes:
+    if kind is ValueKind.LANG_ALT:
+        text = str(value)
+    elif kind is ValueKind.TEXT_SEQ:
+        text = "; ".join(str(v) for v in value)
+    elif kind is ValueKind.DATE:
+        dt = value.value if isinstance(value, MetaDate) else value
+        text = dt.strftime("%Y:%m:%d %H:%M:%S")
+    else:
+        text = str(value)
+    return text.encode("utf-8")
+
+
+def _encode_gps(gps: dict[int, Any], coord: GPSCoord | None) -> None:
+    for tag in (_GPS_LAT_REF, _GPS_LAT, _GPS_LON_REF, _GPS_LON, _GPS_ALT_REF, _GPS_ALT):
+        gps.pop(tag, None)
+    if coord is None:
+        return
+    gps[_GPS_LAT_REF] = b"N" if coord.latitude >= 0 else b"S"
+    gps[_GPS_LAT] = _degrees_to_dms(coord.latitude)
+    gps[_GPS_LON_REF] = b"E" if coord.longitude >= 0 else b"W"
+    gps[_GPS_LON] = _degrees_to_dms(coord.longitude)
+    if coord.altitude is not None:
+        gps[_GPS_ALT_REF] = 1 if coord.altitude < 0 else 0
+        gps[_GPS_ALT] = (round(abs(coord.altitude) * 100), 100)
+
+
+def _degrees_to_dms(
+    value: float,
+) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
+    value = abs(value)
+    degrees = int(value)
+    minutes = int((value - degrees) * 60)
+    seconds = (value - degrees - minutes / 60) * 3600
+    return ((degrees, 1), (minutes, 1), (round(seconds * 100), 100))

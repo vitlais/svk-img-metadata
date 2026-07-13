@@ -105,12 +105,16 @@ class ImageMetadata:
     """
 
     source_format: str | None = None
-    #: Raw per-standard views, populated by the codecs. EXIF/IPTC are plain
-    #: dicts of decoded tags; ``xmp`` is the XMP document (added in M5).
+    #: Raw per-standard views, populated by the codecs. ``exif``/``iptc`` are
+    #: the raw decoded structures; ``xmp`` is an ``XmpDocument``.
     exif: dict[str, Any] = field(default_factory=dict)
     iptc: dict[str, Any] = field(default_factory=dict)
     xmp: Any = None
     _values: dict[str, Any] = field(default_factory=dict, repr=False)
+    #: Original container bytes / path, retained so save() can rewrite the file
+    #: while preserving pixel data and unmodelled segments.
+    _source: bytes | None = field(default=None, repr=False)
+    _source_path: Any = field(default=None, repr=False)
 
     def get(self, name: str) -> Any:
         """Return the canonical field ``name`` (``None`` if absent)."""
@@ -134,6 +138,19 @@ class ImageMetadata:
     def to_dict(self) -> dict[str, Any]:
         """A plain-dict view of the canonical fields that are set."""
         return {name: self._values[name] for name in FIELDS if name in self._values}
+
+    def save(
+        self, path=None, standards: tuple[str, ...] = ("exif", "iptc", "xmp")
+    ) -> None:
+        """Write the metadata back into the image, preserving pixels/unknowns.
+
+        ``path`` defaults to the file this metadata was read from. ``standards``
+        selects which carriers to (re)write; canonical fields fan out to each.
+        Requires metadata read from a source image.
+        """
+        from .containers import save_image
+
+        save_image(self, path, standards)
 
 
 def _make_property(name: str) -> property:
