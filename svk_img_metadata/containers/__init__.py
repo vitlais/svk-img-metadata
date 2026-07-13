@@ -126,8 +126,9 @@ def save_image(meta: ImageMetadata, path, standards: tuple[str, ...]) -> None:
             png_kwargs["xmp"] = xmp_blob
         new_bytes = png.rewrite(meta._source, **png_kwargs)
     elif fmt == "tiff":
-        raise NotImplementedError(
-            "TIFF writing is a later milestone (read is supported)"
+        raise MetadataError(
+            "embedding metadata into TIFF is not supported by design; write an XMP "
+            "sidecar instead with meta.write_xmp_sidecar()"
         )
     else:
         raise NotImplementedError(f"writing {fmt!r} is not implemented yet")
