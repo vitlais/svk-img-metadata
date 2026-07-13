@@ -1,7 +1,7 @@
 [project]
 name = "svk-img-metadata"
 version = "0.1"
-description = "null"
+description = "Read, write, and synchronise EXIF/IPTC/XMP image metadata in JPEG, PNG, and TIFF"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{name = "Henrik Vitalis "}]
